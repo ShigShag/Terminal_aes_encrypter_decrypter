@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Could not write to the file\n");
             goto Cleanup;
         }
+        printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
     {
         cipher = NULL;
@@ -140,6 +141,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Could not write to the file\n");
             goto Cleanup;
         }
+        printf("File was decrypted\n");
     }
 
     Cleanup:

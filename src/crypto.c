@@ -104,7 +104,7 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a)
             printf("Could not get random bytes for IV\n");
             return;
         }
-        printf("[+] Created random IV\n");
+        //printf("[+] Created random IV\n");
     }
 
     // Set property of aes
