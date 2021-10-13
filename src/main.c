@@ -8,7 +8,7 @@
 
 void print_help()
 {
-    printf("Usage: rhino -p [password] -(e/d) [Path to file]\n");
+    printf("Usage: executable -p [password] -(e/d) [Path to file]\n");
 }
 int main(int argc, char *argv[])
 {
