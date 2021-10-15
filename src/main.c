@@ -36,7 +36,6 @@ int main(int argc, char *argv[])
     PBYTE plain = NULL;
     DWORD plain_size;
 
-    PBYTE cipher = NULL;
     DWORD cipher_size;
 
     for(int i = 0;i < argc;i++)
@@ -110,15 +109,14 @@ int main(int argc, char *argv[])
     // Encrypt data
     if(mode == MODE_ENCRYPT)
     {
-        cipher = NULL;
-        err = aes_encrypt(aes_key, plain, plain_size, &cipher, &cipher_size);
+        err = aes_encrypt(aes_key, plain, plain_size, plain, &cipher_size);
         if(!err)
         {
             fprintf(stderr, "Could not aes encrypt the file\n");
             goto Cleanup;
         }
 
-        err = write_file(path, cipher, cipher_size, 1, aes_key->iv_size, aes_key->iv);
+        err = write_file(path, plain, cipher_size, 1, aes_key->iv_size, aes_key->iv);
         if(!err)
         {
             fprintf(stderr, "Could not write to the file\n");
@@ -127,15 +125,14 @@ int main(int argc, char *argv[])
         printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
     {
-        cipher = NULL;
-        err = aes_decrypt(aes_key, plain, plain_size, &cipher, &cipher_size);
+        err = aes_decrypt(aes_key, plain, plain_size, plain, &cipher_size);
         if(!err)
         {
             fprintf(stderr, "Could not decrypt the file\n");
             goto Cleanup;
         }
 
-        err = write_file(path, cipher, cipher_size, 0, aes_key->iv_size, aes_key->iv);
+        err = write_file(path, plain, cipher_size, 0, aes_key->iv_size, aes_key->iv);
         if(!err)
         {
             fprintf(stderr, "Could not write to the file\n");
@@ -147,7 +144,6 @@ int main(int argc, char *argv[])
     Cleanup:
     // Free everything
     if(plain) HeapFree(GetProcessHeap(), 0, plain);
-    if(cipher) HeapFree(GetProcessHeap(), 0, cipher);
     if(aes_key) free_aes_key_struct(aes_key);
     if(aes_algorithm) BCryptCloseAlgorithmProvider(aes_algorithm, 0);
 

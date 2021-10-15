@@ -35,10 +35,11 @@ void free_aes_key_struct(AES_KEY *a);
 void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a);
 
 /* Encrypt data */
-BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE *cipher, DWORD *cipher_size);
+/* This functions expects plain to be at least the size of the cipher length */
+BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE cipher, DWORD *cipher_size);
 
 /* Decrypt data */
-BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE *plain, DWORD *plain_size);
+BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE plain, DWORD *plain_size);
 
 /* ---------------------- RANDOM ---------------------- */
 

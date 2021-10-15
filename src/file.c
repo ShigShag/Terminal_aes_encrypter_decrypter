@@ -1,4 +1,5 @@
 #include "file.h"
+#include "crypto.h"
 #include <stdio.h>
 
 BOOL read_file(LPCSTR f_name, PBYTE *f_buffer, DWORD *f_size, BOOL iv_given, DWORD iv_size, PBYTE *iv)
@@ -14,7 +15,10 @@ BOOL read_file(LPCSTR f_name, PBYTE *f_buffer, DWORD *f_size, BOOL iv_given, DWO
     DWORD size;
     size = GetFileSize(fp, NULL);
 
-    buffer = HeapAlloc(GetProcessHeap(), 0, size);
+    // Calculate cipher size + iv -> this we can encrypt the data in the same buffer
+    DWORD allocate_size = ((CRYPTO_IV_SIZE - (size % CRYPTO_IV_SIZE)) + size) + CRYPTO_IV_SIZE;
+
+    buffer = HeapAlloc(GetProcessHeap(), 0, allocate_size);
     if(buffer == NULL)
     {
         printf("Could not allocate space for file buffer\n");

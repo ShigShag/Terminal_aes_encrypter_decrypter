@@ -129,12 +129,12 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a)
 
     if(!NT_SUCCESS(err = BCryptGenerateSymmetricKey(hAesAlg, &a->hKey, a->key_object, a->key_object_size, a->key, a->key_size, 0)))
     {
-        wprintf(L"**** Error 0x%x returned by BCryptGenerateSymmetricKey\n", err);
+        printf("**** Error 0x%lx returned by BCryptGenerateSymmetricKey\n", err);
         return;
     }
     //printf("[+] Created symmetric key\n");
 }
-BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE *cipher, DWORD *cipher_size)
+BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE cipher, DWORD *cipher_size)
 {
     if(a == NULL || plain == NULL || plain_size == 0) return 0;
 
@@ -148,13 +148,6 @@ BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE *cipher, DWORD
         return 0;
     }
 
-    *cipher = (PBYTE) HeapAlloc(GetProcessHeap(), 0, *cipher_size);
-    if(*cipher == NULL)
-    {
-        printf("Could not allocate space for cipher\n");
-        return 0;
-    }
-
     // Copy IV in separate buffer to spare the original
     PBYTE iv_copy = HeapAlloc(GetProcessHeap(), 0, a->iv_size);
     if(iv_copy == NULL)
@@ -164,7 +157,7 @@ BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE *cipher, DWORD
     }
     memcpy(iv_copy, a->iv, a->iv_size);
 
-    if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, plain, plain_size, NULL, iv_copy, a->block_length, *cipher, *cipher_size, &cbData, BCRYPT_BLOCK_PADDING)))
+    if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, plain, plain_size, NULL, iv_copy, a->block_length, cipher, *cipher_size, &cbData, BCRYPT_BLOCK_PADDING)))
     {
         printf("**** Error 0x%lx returned by BCryptEncrypt\n", err);
         return 0;
@@ -173,7 +166,7 @@ BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE *cipher, DWORD
     HeapFree(GetProcessHeap(), 0, iv_copy);
     return 1;
 }
-BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE *plain, DWORD *plain_size)
+BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE plain, DWORD *plain_size)
 {
     if(a == NULL || cipher == NULL || cipher_size == 0) return 0;
 
@@ -187,13 +180,7 @@ BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE *plain, DWOR
         return 0;
     }
 
-    *plain = (PBYTE) HeapAlloc(GetProcessHeap(), 0, output_buffer_size);
-    if(*plain == NULL)
-    {
-        printf("Could not allocate space for cipher\n");
-        return 0;
-    }
-    if(!NT_SUCCESS(err = BCryptDecrypt(a->hKey, cipher, cipher_size, NULL, a->iv, a->block_length, *plain, output_buffer_size, plain_size, BCRYPT_BLOCK_PADDING)))
+    if(!NT_SUCCESS(err = BCryptDecrypt(a->hKey, cipher, cipher_size, NULL, a->iv, a->block_length, plain, output_buffer_size, plain_size, BCRYPT_BLOCK_PADDING)))
     {
         printf("**** Error 0x%lx returned by BCryptEncrypt\n", err);
         return 0;
@@ -206,10 +193,9 @@ PBYTE get_random_bytes(DWORD count)
     if(count == 0) return NULL;
 
     BCRYPT_ALG_HANDLE h;
-    NTSTATUS err;
     PBYTE buffer;
 
-    err = BCryptOpenAlgorithmProvider(&h, BCRYPT_RNG_ALGORITHM, NULL, 0);
+    BCryptOpenAlgorithmProvider(&h, BCRYPT_RNG_ALGORITHM, NULL, 0);
 
     buffer = (PBYTE) HeapAlloc(GetProcessHeap(), 0, count);
     if(buffer == NULL)
@@ -315,32 +301,3 @@ BOOL sha256_sum(BCRYPT_ALG_HANDLE hAlg, PUCHAR plain, DWORD plain_size, PBYTE *c
 
     return 1;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
