@@ -215,7 +215,7 @@ BCRYPT_ALG_HANDLE initialize_sha256_algorithm()
 
     if(!NT_SUCCESS(err = BCryptOpenAlgorithmProvider(&hAesAlg, BCRYPT_SHA256_ALGORITHM, NULL, 0)))
     {
-        wprintf(L"**** Error 0x%x returned by BCryptOpenAlgorithmProvider\n", err);
+        printf("**** Error 0x%lx returned by BCryptOpenAlgorithmProvider\n", err);
         return NULL;
     }
     //printf("[+] Created sha256 algorithm handle\n");
