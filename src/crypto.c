@@ -204,7 +204,7 @@ PBYTE get_random_bytes(DWORD count)
         return NULL;
     }
 
-    BCryptGenRandom(h, buffer, count, 1);
+    BCryptGenRandom(h, buffer, count, 0);
     BCryptCloseAlgorithmProvider(h, 0);
     return buffer;
 }
