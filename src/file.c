@@ -1,110 +1,58 @@
 #include "file.h"
-#include "crypto.h"
-#include <stdio.h>
 
-BOOL read_file(LPCSTR f_name, PBYTE *f_buffer, DWORD *f_size, BOOL iv_given, DWORD iv_size, PBYTE *iv)
+DWORD get_file_size(LPCSTR f_name)
 {
     HANDLE fp = CreateFileA(f_name, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD size = GetFileSize(fp, NULL);
+    CloseHandle(fp);
+    return size;
+}
+BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
+{
+    HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if(fp == INVALID_HANDLE_VALUE)
     {
         printf("Could not open file: %lu\n", GetLastError());
         return 0;
     }
 
-    LPVOID buffer;
-    DWORD size;
-    size = GetFileSize(fp, NULL);
-
-    // Calculate cipher size + iv -> this we can encrypt the data in the same buffer
-    DWORD allocate_size = ((CRYPTO_IV_SIZE - (size % CRYPTO_IV_SIZE)) + size) + CRYPTO_IV_SIZE;
-
-    buffer = HeapAlloc(GetProcessHeap(), 0, allocate_size);
-    if(buffer == NULL)
+    a->iv = HeapAlloc(GetProcessHeap(), 0, CRYPTO_IV_SIZE);
+    if(a->iv == NULL)
     {
-        printf("Could not allocate space for file buffer\n");
+        printf("Could not allocate space for iv\n");
         CloseHandle(fp);
         return 0;
     }
 
-    DWORD total_bytes_read = 0;
-    DWORD bytes_read = 0;
+    SetFilePointer(fp, - CRYPTO_IV_SIZE, 0, FILE_END);
 
-    if(iv_given)
+    // Read iv from end of the file
+    DWORD bytes_read;
+    if(!ReadFile(fp, a->iv, CRYPTO_IV_SIZE, &bytes_read, NULL) || bytes_read != CRYPTO_IV_SIZE)
     {
-        *iv = HeapAlloc(GetProcessHeap(), 0, iv_size);
-        if(*iv == NULL)
-        {
-            CloseHandle(fp);
-            HeapFree(GetProcessHeap(), 0, buffer);
-            return 0;
-        }
-        while(total_bytes_read < iv_size)
-        {
-            if(!ReadFile(fp, *iv, iv_size - total_bytes_read, &bytes_read, NULL))
-            {
-                printf("Could not read file: %lx\n", GetLastError());
-                break;
-            }
-            total_bytes_read += bytes_read;
-        }
-        // Subtract the iv
-        size -= iv_size;
-        total_bytes_read = 0;
+        printf("Could not read iv from file: %s\nbytes read: %lu\n", f_name, bytes_read);
+        CloseHandle(fp);
+        return 0;
     }
 
-    while(total_bytes_read < size)
-    {
-        if(!ReadFile(fp, buffer, size - total_bytes_read, &bytes_read, NULL))
-        {
-            printf("Could not read file: %lx\n", GetLastError());
-            break;
-        }
-        total_bytes_read += bytes_read;
-    }
-
-    *f_buffer = buffer;
-    *f_size = bytes_read;
+    // Remove iv from end of the file
+    SetFilePointer(fp, - CRYPTO_IV_SIZE, 0, FILE_END);
+    SetEndOfFile(fp);
 
     CloseHandle(fp);
     return 1;
 }
-BOOL write_file(LPCSTR f_name, PBYTE buffer, DWORD count, BOOL iv_given, DWORD iv_size, PBYTE iv)
+BOOL strip_file(LPCSTR f_name, int origin, long offset)
 {
-    HANDLE fp = CreateFileA(f_name, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if(fp == INVALID_HANDLE_VALUE)
     {
-        printf("Could not open file: %lu\n", GetLastError());
+        printf("Could not open file in strip_file: %lu\n", GetLastError());
         return 0;
     }
 
-    DWORD total_bytes_written = 0;
-    DWORD bytes_written = 0;
-
-    // Write iv at the beginning of the file
-    if(iv_given)
-    {
-        while(total_bytes_written < iv_size)
-        {
-            if(!WriteFile(fp, iv, iv_size - total_bytes_written, &bytes_written, 0))
-            {
-                printf("Could not write file: %lu\n", GetLastError());
-                return 0;
-            }
-            total_bytes_written += bytes_written;
-        }
-        total_bytes_written = 0;
-    }
-
-
-    while(total_bytes_written < count)
-    {
-        if(!WriteFile(fp, buffer, count - total_bytes_written, &bytes_written, 0))
-        {
-            printf("Could not write file: %lu\n", GetLastError());
-            return 0;
-        }
-        total_bytes_written += bytes_written;
-    }
+    SetFilePointer(fp, offset, 0, origin);
+    SetEndOfFile(fp);
     CloseHandle(fp);
     return 1;
 }

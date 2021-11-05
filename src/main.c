@@ -12,6 +12,7 @@ void print_help()
 }
 int main(int argc, char *argv[])
 {
+
     if(argc < 5){
         print_help();
         return 0;
@@ -19,7 +20,7 @@ int main(int argc, char *argv[])
 
     int mode;
     int pw_set = 0;
-    BOOL iv_given = 0;
+
     LPCSTR pw;
     LPCSTR path;
 
@@ -33,7 +34,6 @@ int main(int argc, char *argv[])
 
     AES_KEY *aes_key;
 
-    PBYTE plain = NULL;
     DWORD plain_size;
 
     DWORD cipher_size;
@@ -48,7 +48,6 @@ int main(int argc, char *argv[])
         if(strcmp(argv[i], "-d") == 0 && i != argc - 1){
             mode = MODE_DECRYPT;
             path = argv[i + 1];
-            iv_given = 1;
             break;
         }
     }
@@ -83,7 +82,7 @@ int main(int argc, char *argv[])
     // Initialize aes
     aes_algorithm = initialize_aes_algorithm();
     if(!aes_algorithm) goto Cleanup;
-    aes_key = get_aes_key_struct(hash, hash_size, NULL, CRYPTO_IV_SIZE);
+    aes_key = get_aes_key_struct(hash, hash_size);
     if(!aes_key)
     {
         fprintf(stderr, "Could not set aes key struct\n");
@@ -97,53 +96,51 @@ int main(int argc, char *argv[])
     // Create symmetric key
     create_symmetric_key_object(aes_algorithm, aes_key);
 
-    // Read file
-    plain = NULL;
-    err = read_file(path, &plain, &plain_size, iv_given, aes_key->iv_size, &aes_key->iv);
-    if(!err)
+    // Get and strip iv from the end of the file
+    if(mode == MODE_DECRYPT)
     {
-        fprintf(stderr, "Could not read the file\n");
+        if(get_and_strip_iv(path, aes_key) == 0)
+        {
+            goto Cleanup;
+        }
+    }
+
+    DWORD f_size = get_file_size(path);
+    FILE *fp = fopen(path, "rb+");
+    if(fp == NULL)
+    {
+        fprintf(stderr, "Could not open file\n");
         goto Cleanup;
     }
 
-    // Encrypt data
     if(mode == MODE_ENCRYPT)
     {
-        err = aes_encrypt(aes_key, plain, plain_size, plain, &cipher_size);
-        if(!err)
+        plain_size = aes_encrypt(aes_key, fp, f_size);
+        if(plain_size == 0)
         {
             fprintf(stderr, "Could not aes encrypt the file\n");
             goto Cleanup;
         }
-
-        err = write_file(path, plain, cipher_size, 1, aes_key->iv_size, aes_key->iv);
-        if(!err)
-        {
-            fprintf(stderr, "Could not write to the file\n");
-            goto Cleanup;
-        }
+        fclose(fp);
         printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
     {
-        err = aes_decrypt(aes_key, plain, plain_size, plain, &cipher_size);
-        if(!err)
+        plain_size = aes_decrypt(aes_key, fp, f_size);
+        if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
             goto Cleanup;
         }
 
-        err = write_file(path, plain, cipher_size, 0, aes_key->iv_size, aes_key->iv);
-        if(!err)
-        {
-            fprintf(stderr, "Could not write to the file\n");
-            goto Cleanup;
-        }
+        // Strip remains of the encrypted file
+        fclose(fp);
+        strip_file(path, FILE_END, - (f_size - plain_size));
+
         printf("File was decrypted\n");
     }
 
-    Cleanup:
     // Free everything
-    if(plain) HeapFree(GetProcessHeap(), 0, plain);
+    Cleanup:
     if(aes_key) free_aes_key_struct(aes_key);
     if(aes_algorithm) BCryptCloseAlgorithmProvider(aes_algorithm, 0);
 

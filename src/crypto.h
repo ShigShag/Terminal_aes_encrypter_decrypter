@@ -2,8 +2,10 @@
 #define RHINO_CRYPTO_H
 
 #include <windows.h>
+#include <stdio.h>
 
 #define CRYPTO_IV_SIZE 16
+#define CRYPTO_BUFFER_SIZE 16
 
 typedef struct aes_key
 {
@@ -26,7 +28,7 @@ typedef struct aes_key
 BCRYPT_ALG_HANDLE initialize_aes_algorithm();
 
 /* Initialize an aes key struct */
-AES_KEY *get_aes_key_struct(PBYTE key, DWORD key_size, PBYTE iv, DWORD iv_size);
+AES_KEY *get_aes_key_struct(PBYTE key, DWORD key_size);
 
 /* Free aes key struct */
 void free_aes_key_struct(AES_KEY *a);
@@ -36,10 +38,11 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a);
 
 /* Encrypt data */
 /* This functions expects plain to be at least the size of the cipher length */
-BOOL aes_encrypt(AES_KEY *a, PBYTE plain, DWORD plain_size, PBYTE cipher, DWORD *cipher_size);
+DWORD aes_encrypt(AES_KEY *a, FILE *fp, DWORD f_size);
 
 /* Decrypt data */
-BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE plain, DWORD *plain_size);
+//BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE plain, DWORD *plain_size);
+DWORD aes_decrypt(AES_KEY *a, FILE *fp, DWORD f_size);
 
 /* ---------------------- RANDOM ---------------------- */
 
