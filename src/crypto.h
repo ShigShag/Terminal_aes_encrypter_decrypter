@@ -7,6 +7,9 @@
 #define CRYPTO_IV_SIZE 16
 #define CRYPTO_BUFFER_SIZE 16
 
+// this has to be a multiple of 16
+#define CRYPTO_OUTPUT_BUFFER_SIZE 32000
+
 typedef struct aes_key
 {
     BCRYPT_KEY_HANDLE hKey;
@@ -41,8 +44,12 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a);
 DWORD aes_encrypt(AES_KEY *a, FILE *fp, DWORD f_size);
 
 /* Decrypt data */
-//BOOL aes_decrypt(AES_KEY *a, PBYTE cipher, DWORD cipher_size, PBYTE plain, DWORD *plain_size);
 DWORD aes_decrypt(AES_KEY *a, FILE *fp, DWORD f_size);
+
+/* Encrypt data with output file */
+DWORD aes_encrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out);
+
+DWORD aes_decrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out);
 
 /* ---------------------- RANDOM ---------------------- */
 

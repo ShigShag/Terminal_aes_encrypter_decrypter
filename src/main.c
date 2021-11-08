@@ -5,10 +5,12 @@
 #define MODE_NOT_SET 0
 #define MODE_ENCRYPT 1
 #define MODE_DECRYPT 2
+#define MODE_ENCRYPT_WITH_OUTPUT 3
+#define MODE_DECRYPT_WITH_OUTPUT 4
 
 void print_help()
 {
-    printf("Usage: executable -p [password] -(e/d) [Path to file]\n");
+    printf("Usage: executable -p [password] -(e/d) [Path to file]\n optional\n-o [output file]\n");
 }
 int main(int argc, char *argv[])
 {
@@ -23,6 +25,10 @@ int main(int argc, char *argv[])
 
     LPCSTR pw;
     LPCSTR path;
+    LPCSTR output_path;
+
+    FILE *fp = NULL;
+    FILE *out = NULL;
 
     NTSTATUS err;
 
@@ -35,6 +41,7 @@ int main(int argc, char *argv[])
     AES_KEY *aes_key;
 
     DWORD plain_size;
+    DWORD f_size;
 
     DWORD cipher_size;
 
@@ -59,6 +66,35 @@ int main(int argc, char *argv[])
             pw_set = 1;
             break;
         }
+    }
+
+    for(int i = 0;i < argc;i++)
+    {
+        if(strcmp(argv[i], "-o") == 0 && i != argc - 1){
+            output_path = argv[i + 1];
+            switch(mode)
+            {
+                case MODE_ENCRYPT:
+                    mode = MODE_ENCRYPT_WITH_OUTPUT;
+                    break;
+
+                case MODE_DECRYPT:
+                    mode = MODE_DECRYPT_WITH_OUTPUT;
+                    break;
+
+                default:
+                    mode = MODE_NOT_SET;
+                    break;
+            }
+            break;
+        }
+    }
+
+    // Check if output and path are the same
+    if(strcmp(path, output_path) == 0)
+    {
+        if(mode == MODE_DECRYPT_WITH_OUTPUT) mode = MODE_DECRYPT;
+        else if(mode == MODE_ENCRYPT_WITH_OUTPUT) mode = MODE_ENCRYPT;
     }
 
     if(!pw_set)
@@ -104,9 +140,17 @@ int main(int argc, char *argv[])
             goto Cleanup;
         }
     }
+    else if(mode == MODE_DECRYPT_WITH_OUTPUT)
+    {
+        if(get_and_not_strip_iv(path, aes_key) == 0)
+        {
+            goto Cleanup;
+        }
+    }
 
-    DWORD f_size = get_file_size(path);
-    FILE *fp = fopen(path, "rb+");
+    f_size = get_file_size(path);
+
+    fp = fopen(path, "rb+");
     if(fp == NULL)
     {
         fprintf(stderr, "Could not open file\n");
@@ -121,7 +165,6 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Could not aes encrypt the file\n");
             goto Cleanup;
         }
-        fclose(fp);
         printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
     {
@@ -133,16 +176,52 @@ int main(int argc, char *argv[])
         }
 
         // Strip remains of the encrypted file
-        fclose(fp);
         strip_file(path, FILE_END, - (f_size - plain_size));
 
         printf("File was decrypted\n");
+    }
+    else if(mode == MODE_ENCRYPT_WITH_OUTPUT)
+    {
+        out = fopen(output_path, "wb");
+        if(out == NULL)
+        {
+            fprintf(stderr, "Could not open output file: %s\n", output_path);
+            goto Cleanup;
+        }
+        plain_size = aes_encrypt_output_file(aes_key, fp, f_size, out);
+        if(plain_size == 0)
+        {
+            fprintf(stderr, "Could not decrypt the file\n");
+            goto Cleanup;
+        }
+        printf("File was encrypted\n");
+    }
+    else if(mode == MODE_DECRYPT_WITH_OUTPUT)
+    {
+        // Exclude the iv at the of the file
+        f_size -= 16;
+        out = fopen(output_path, "wb");
+        if(out == NULL)
+        {
+            fprintf(stderr, "Could not open output file: %s\n", output_path);
+            goto Cleanup;
+        }
+        plain_size = aes_decrypt_output_file(aes_key, fp, f_size, out);
+        if(plain_size == 0)
+        {
+            fprintf(stderr, "Could not decrypt the file\n");
+            goto Cleanup;
+        }
+        printf("File was decrypted\n");
+
     }
 
     // Free everything
     Cleanup:
     if(aes_key) free_aes_key_struct(aes_key);
     if(aes_algorithm) BCryptCloseAlgorithmProvider(aes_algorithm, 0);
+    if(fp) fclose(fp);
+    if(out) fclose(out);
 
     return 0;
 }
