@@ -30,8 +30,6 @@ int main(int argc, char *argv[])
     FILE *fp = NULL;
     FILE *out = NULL;
 
-    NTSTATUS err;
-
     PBYTE hash;
     DWORD hash_size;
     BCRYPT_ALG_HANDLE sha256_alg;
@@ -40,10 +38,8 @@ int main(int argc, char *argv[])
 
     AES_KEY *aes_key;
 
-    DWORD plain_size;
-    DWORD f_size;
-
-    DWORD cipher_size;
+    LONGLONG plain_size;
+    LONGLONG f_size;
 
     for(int i = 0;i < argc;i++)
     {

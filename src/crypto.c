@@ -123,19 +123,19 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a)
     }
     //printf("[+] Created symmetric key\n");
 }
-DWORD aes_encrypt(AES_KEY *a, FILE *fp, DWORD f_size)
+LONGLONG aes_encrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
 {
     if(a == NULL || fp == NULL || f_size == 0) return 0;
 
     NTSTATUS err;
-    DWORD cipher_size;
+    LONGLONG cipher_size;
     DWORD bytes_encrypted;
-    DWORD total_bytes_encrypted = 0;
+    LONGLONG total_bytes_encrypted = 0;
     size_t bytes_read;
     BYTE buffer[CRYPTO_BUFFER_SIZE];
 
     // Get the size of the cipher text
-    if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, NULL, f_size, NULL, a->iv, a->iv_size, NULL, 0, &cipher_size, BCRYPT_BLOCK_PADDING)))
+    if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, NULL, f_size, NULL, a->iv, a->iv_size, NULL, 0, (ULONG *) &cipher_size, BCRYPT_BLOCK_PADDING)))
     {
         printf("**** Error 0x%lx returned by BCryptEncrypt\n", err);
         return 0;
@@ -204,13 +204,13 @@ DWORD aes_encrypt(AES_KEY *a, FILE *fp, DWORD f_size)
     return total_bytes_encrypted;
 }
 // f_size is expected to be calculated without the iv
-DWORD aes_decrypt(AES_KEY *a, FILE *fp, DWORD f_size)
+LONGLONG aes_decrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
 {
     if(a == NULL || fp == NULL || f_size < 16) return 0;
 
     NTSTATUS err;
     DWORD bytes_decrypted;
-    DWORD total_bytes_decrypted = 0;
+    LONGLONG total_bytes_decrypted = 0;
     size_t bytes_read;
     BYTE buffer[CRYPTO_BUFFER_SIZE];
 
@@ -255,23 +255,19 @@ DWORD aes_decrypt(AES_KEY *a, FILE *fp, DWORD f_size)
     return total_bytes_decrypted;
 }
 
-DWORD aes_encrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out)
+BOOL aes_encrypt_output_file(AES_KEY *a, FILE *in, LONGLONG in_size, FILE *out)
 {
     if(a == NULL || in == NULL || out == NULL || in_size == 0) return 0;
 
     NTSTATUS err;
-    DWORD cipher_size;
+    LONGLONG cipher_size;
     DWORD bytes_encrypted;
-    DWORD total_bytes_encrypted = 0;
+    LONGLONG total_bytes_encrypted = 0;
     size_t bytes_read;
     BYTE buffer[CRYPTO_OUTPUT_BUFFER_SIZE];
 
-    // Get the size of the cipher text
-    if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, NULL, in_size, NULL, a->iv, a->iv_size, NULL, 0, &cipher_size, BCRYPT_BLOCK_PADDING)))
-    {
-        printf("**** Error 0x%lx returned by BCryptEncrypt\n", err);
-        return 0;
-    }
+    // Get the size of the cipher text -> to prevent overflow the BCryptEncrypt function is not used because it only supports size up to 4 byte
+    cipher_size = in_size + (16 - (in_size % 16));
 
     // Copy IV in separate buffer to spare the original
     PBYTE iv_copy = HeapAlloc(GetProcessHeap(), 0, a->iv_size);
@@ -331,16 +327,16 @@ DWORD aes_encrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out)
 
     // Place the iv at the end of the file
     fwrite(a->iv, 1, a->iv_size, out);
-    return total_bytes_encrypted;
+    return 1;
 }
 
-DWORD aes_decrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out)
+BOOL aes_decrypt_output_file(AES_KEY *a, FILE *in, LONGLONG in_size, FILE *out)
 {
     if(a == NULL || in == NULL || out == NULL || in_size == 0) return 0;
 
     NTSTATUS err;
     DWORD bytes_decrypted;
-    DWORD total_bytes_decrypted = 0;
+    LONGLONG total_bytes_decrypted = 0;
     size_t bytes_read;
     BYTE buffer[CRYPTO_OUTPUT_BUFFER_SIZE];
 
@@ -387,7 +383,7 @@ DWORD aes_decrypt_output_file(AES_KEY *a, FILE *in, DWORD in_size, FILE *out)
             total_bytes_decrypted += bytes_decrypted;
         }while(bytes_read == sizeof(buffer));
     }
-    return total_bytes_decrypted;
+    return 1;
 }
 
 PBYTE get_random_bytes(DWORD count)

@@ -1,11 +1,12 @@
 #include "file.h"
 
-DWORD get_file_size(LPCSTR f_name)
+LONGLONG get_file_size(LPCSTR f_name)
 {
+    LARGE_INTEGER i;
     HANDLE fp = CreateFileA(f_name, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    DWORD size = GetFileSize(fp, NULL);
+    GetFileSizeEx(fp, &i);
     CloseHandle(fp);
-    return size;
+    return i.QuadPart;
 }
 BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
 {
@@ -44,6 +45,8 @@ BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
 }
 BOOL get_and_not_strip_iv(LPCSTR f_name, AES_KEY *a)
 {
+    LARGE_INTEGER i;
+
     HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if(fp == INVALID_HANDLE_VALUE)
     {
@@ -59,7 +62,15 @@ BOOL get_and_not_strip_iv(LPCSTR f_name, AES_KEY *a)
         return 0;
     }
 
-    SetFilePointer(fp, - CRYPTO_IV_SIZE, 0, FILE_END);
+    GetFileSizeEx(fp, &i);
+    i.QuadPart -= 16;
+
+    if(SetFilePointer(fp, i.LowPart, &i.HighPart, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        fprintf(stderr, "Could not set file pointer\n");
+        CloseHandle(fp);
+        return 0;
+    }
 
     // Read iv from end of the file
     DWORD bytes_read;
