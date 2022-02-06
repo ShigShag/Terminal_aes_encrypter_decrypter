@@ -123,16 +123,18 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a)
     }
     //printf("[+] Created symmetric key\n");
 }
-LONGLONG aes_encrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
+
+LONGLONG aes_encrypt(AES_KEY *a, FILE *fp_reader, FILE *fp_writer, LONGLONG f_size)
 {
-    if(a == NULL || fp == NULL || f_size == 0) return 0;
+    if(a == NULL || fp_reader == NULL || fp_writer == NULL ||f_size == 0) return 0;
 
     NTSTATUS err;
     LONGLONG cipher_size;
     DWORD bytes_encrypted;
     LONGLONG total_bytes_encrypted = 0;
     size_t bytes_read;
-    BYTE buffer[CRYPTO_BUFFER_SIZE];
+    BYTE buffer[CRYPTO_OUTPUT_BUFFER_SIZE];
+
 
     // Get the size of the cipher text
     if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, NULL, f_size, NULL, a->iv, a->iv_size, NULL, 0, (ULONG *) &cipher_size, BCRYPT_BLOCK_PADDING)))
@@ -153,45 +155,39 @@ LONGLONG aes_encrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
 
     // Read the first 16 bytes to link them with the iv and aes encrypt
     // if file size is smaller than 16 fread will only read as much as possible
-    bytes_read = fread(buffer, 1, sizeof(buffer), fp);
+    bytes_read = fread(buffer, sizeof(unsigned char), a->iv_size, fp_reader);
 
     // Encrypt the first block and check if it is smaller than 16 byte
     if(!NT_SUCCESS(err = BCryptEncrypt(a->hKey, buffer, (bytes_read < 16) ? bytes_read : 16, NULL, iv_copy,
-                                       a->block_length, buffer, sizeof(buffer), &bytes_encrypted,
+                                       a->block_length, buffer, a->iv_size, &bytes_encrypted,
                                        (bytes_read < 16) ? BCRYPT_BLOCK_PADDING : 0)))
     {
         printf("**** Error 0x%lx returned by BCryptEncrypt only iv\n", err);
         return 0;
     }
 
-
-    // revert the file pointer to the beginning
-    rewind(fp);
-
     // Write the data to the file -> by writing the file pointer will be at +16 again
-    fwrite(buffer, 1, bytes_encrypted, fp);
-    fflush(fp);
+    fwrite(buffer, 1, bytes_encrypted, fp_writer);
 
     total_bytes_encrypted += bytes_encrypted;
 
-    // Check if there is only block to encrypt
+    // Check if more than one block needs to be encrypted
     if(cipher_size > 16)
     {
         while(total_bytes_encrypted < cipher_size)
         {
-            // Encrypt 16 Bytes at the time
-            bytes_read = fread(buffer, 1, sizeof(buffer), fp);
+            // Read data to be encrypted
+            bytes_read = fread(buffer, 1, sizeof(buffer), fp_reader);
 
             if(!NT_SUCCESS(
                     err = BCryptEncrypt(a->hKey, buffer, bytes_read, NULL, NULL, 0, buffer, sizeof(buffer),
-                                        &bytes_encrypted, (bytes_read < 16) ? BCRYPT_BLOCK_PADDING : 0)))
+                                        &bytes_encrypted, (bytes_read < sizeof(buffer)) ? BCRYPT_BLOCK_PADDING : 0)))
             {
                 printf("**** Error 0x%lx returned by BCryptEncrypt\n", err);
                 return 0;
             }
-            fseek(fp, - (long) bytes_read, SEEK_CUR);
-            fwrite(buffer, 1, bytes_encrypted, fp);
-            fflush(fp);
+            fwrite(buffer, sizeof(unsigned char), bytes_encrypted, fp_writer);
+
             total_bytes_encrypted += bytes_encrypted;
         }
     }
@@ -199,58 +195,51 @@ LONGLONG aes_encrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
     HeapFree(GetProcessHeap(), 0, iv_copy);
 
     // Place the iv at the end of the file
-    fwrite(a->iv, 1, a->iv_size, fp);
-    fflush(fp);
+    fwrite(a->iv, 1, a->iv_size, fp_writer);
     return total_bytes_encrypted;
 }
 // f_size is expected to be calculated without the iv
-LONGLONG aes_decrypt(AES_KEY *a, FILE *fp, LONGLONG f_size)
+LONGLONG aes_decrypt(AES_KEY *a, FILE *fp_reader, FILE *fp_writer, LONGLONG f_size)
 {
-    if(a == NULL || fp == NULL || f_size < 16) return 0;
+    if(a == NULL || fp_reader == NULL || fp_writer == NULL || f_size < 16) return 0;
 
     NTSTATUS err;
     DWORD bytes_decrypted;
     LONGLONG total_bytes_decrypted = 0;
     size_t bytes_read;
-    BYTE buffer[CRYPTO_BUFFER_SIZE];
+    BYTE buffer[CRYPTO_OUTPUT_BUFFER_SIZE];
 
     // Read the first 16 bytes to link them with the iv and aes decrypt
-    bytes_read = fread(buffer, 1, sizeof(buffer), fp);
+    bytes_read = fread(buffer, sizeof(unsigned char), a->iv_size, fp_reader);
 
     // Decrypt first block with iv
-    if(!NT_SUCCESS(err = BCryptDecrypt(a->hKey, buffer, bytes_read, NULL, a->iv, a->iv_size, buffer, sizeof(buffer),
+    if(!NT_SUCCESS(err = BCryptDecrypt(a->hKey, buffer, bytes_read, NULL, a->iv, a->iv_size, buffer, a->iv_size,
                                        &bytes_decrypted, (f_size == a->block_length) ? BCRYPT_BLOCK_PADDING : 0)))
     {
         printf("**** Error 0x%lx returned by BCryptDecrypt only iv\n", err);
         return 0;
     }
 
-    // revert the file pointer to the beginning
-    rewind(fp);
-
     // write the decrypted data to the file
-    fwrite(buffer, 1, bytes_decrypted, fp);
-    fflush(fp);
+    fwrite(buffer, sizeof(unsigned char), bytes_decrypted, fp_writer);
 
     total_bytes_decrypted += bytes_decrypted;
 
     if(f_size > a->block_length)
     {
-        while(bytes_decrypted == 16)
+        do
         {
-            bytes_read = fread(buffer, 1, sizeof(buffer), fp);
+            bytes_read = fread(buffer, sizeof(unsigned char), sizeof(buffer), fp_reader);
             if(!NT_SUCCESS(
                     err = BCryptDecrypt(a->hKey, buffer, bytes_read, NULL, NULL, 0, buffer, sizeof(buffer),
-                                               &bytes_decrypted, (total_bytes_decrypted == f_size - 16) ? BCRYPT_BLOCK_PADDING : 0)))
+                                               &bytes_decrypted, (bytes_read < sizeof(buffer)) ? BCRYPT_BLOCK_PADDING : 0)))
             {
                 printf("**** Error 0x%lx returned by BCryptDecrypt\n", err);
                 return 0;
             }
-            fseek(fp, - (long) bytes_read, SEEK_CUR);
-            fwrite(buffer, 1, bytes_decrypted, fp);
-            fflush(fp);
+            fwrite(buffer, sizeof(unsigned char), bytes_decrypted, fp_writer);
             total_bytes_decrypted += bytes_decrypted;
-        }
+        } while(bytes_read == sizeof(buffer));
     }
     return total_bytes_decrypted;
 }

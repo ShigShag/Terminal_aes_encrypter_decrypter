@@ -14,7 +14,6 @@ void print_help()
 }
 int main(int argc, char *argv[])
 {
-
     if(argc < 5){
         print_help();
         return 0;
@@ -27,7 +26,7 @@ int main(int argc, char *argv[])
     LPCSTR path;
     LPCSTR output_path;
 
-    FILE *fp = NULL;
+    FILE *in_file = NULL;
     FILE *out = NULL;
 
     PBYTE hash;
@@ -54,6 +53,8 @@ int main(int argc, char *argv[])
             break;
         }
     }
+
+    output_path = path;
 
     for(int i = 0;i < argc;i++)
     {
@@ -146,8 +147,8 @@ int main(int argc, char *argv[])
 
     f_size = get_file_size(path);
 
-    fp = fopen(path, "rb+");
-    if(fp == NULL)
+    in_file = fopen(path, "rb+");
+    if(in_file == NULL)
     {
         fprintf(stderr, "Could not open file\n");
         goto Cleanup;
@@ -155,7 +156,17 @@ int main(int argc, char *argv[])
 
     if(mode == MODE_ENCRYPT)
     {
-        plain_size = aes_encrypt(aes_key, fp, f_size);
+        FILE *in_file_writer = fopen(path, "rb+");
+        if(in_file_writer == NULL)
+        {
+            fprintf(stderr, "Could not open the file for writing\n");
+            goto Cleanup;
+        } 
+
+        plain_size = aes_encrypt(aes_key, in_file, in_file_writer, f_size);
+        fclose(in_file);
+        in_file = NULL;
+        fclose(in_file_writer);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not aes encrypt the file\n");
@@ -164,7 +175,16 @@ int main(int argc, char *argv[])
         printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
     {
-        plain_size = aes_decrypt(aes_key, fp, f_size);
+        FILE *in_file_writer = fopen(path, "rb+");
+        if(in_file_writer == NULL)
+        {
+            fprintf(stderr, "Could not open the file for writing\n");
+            goto Cleanup;
+        } 
+        plain_size = aes_decrypt(aes_key, in_file, in_file_writer, f_size);
+        fclose(in_file);
+        in_file = NULL;
+        fclose(in_file_writer);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
@@ -184,7 +204,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Could not open output file: %s\n", output_path);
             goto Cleanup;
         }
-        plain_size = aes_encrypt_output_file(aes_key, fp, f_size, out);
+        plain_size = aes_encrypt_output_file(aes_key, in_file, f_size, out);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
@@ -196,13 +216,14 @@ int main(int argc, char *argv[])
     {
         // Exclude the iv at the of the file
         f_size -= 16;
+     
         out = fopen(output_path, "wb");
         if(out == NULL)
         {
             fprintf(stderr, "Could not open output file: %s\n", output_path);
             goto Cleanup;
         }
-        plain_size = aes_decrypt_output_file(aes_key, fp, f_size, out);
+        plain_size = aes_decrypt_output_file(aes_key, in_file, f_size, out);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
@@ -216,7 +237,7 @@ int main(int argc, char *argv[])
     Cleanup:
     if(aes_key) free_aes_key_struct(aes_key);
     if(aes_algorithm) BCryptCloseAlgorithmProvider(aes_algorithm, 0);
-    if(fp) fclose(fp);
+    if(in_file) fclose(in_file);
     if(out) fclose(out);
 
     return 0;

@@ -2,13 +2,13 @@
 #define RHINO_CRYPTO_H
 
 #include <windows.h>
+#include <Bcrypt.h>
 #include <stdio.h>
 
 #define CRYPTO_IV_SIZE 16
-#define CRYPTO_BUFFER_SIZE 16
 
 // this has to be a multiple of 16
-#define CRYPTO_OUTPUT_BUFFER_SIZE 64000
+#define CRYPTO_OUTPUT_BUFFER_SIZE 1048576
 
 typedef struct aes_key
 {
@@ -41,10 +41,10 @@ void create_symmetric_key_object(BCRYPT_ALG_HANDLE hAesAlg, AES_KEY *a);
 
 /* Encrypt data */
 /* This functions expects plain to be at least the size of the cipher length */
-LONGLONG aes_encrypt(AES_KEY *a, FILE *fp, LONGLONG f_size);
+LONGLONG aes_encrypt(AES_KEY *a, FILE *fp_reader, FILE *fp_writer, LONGLONG f_size);
 
 /* Decrypt data */
-LONGLONG aes_decrypt(AES_KEY *a, FILE *fp, LONGLONG f_size);
+LONGLONG aes_decrypt(AES_KEY *a, FILE *fp_reader, FILE *fp_writer, LONGLONG f_size);
 
 /* Encrypt data with output file */
 BOOL aes_encrypt_output_file(AES_KEY *a, FILE *in, LONGLONG in_size, FILE *out);
