@@ -1,12 +1,7 @@
 #include <stdio.h>
 #include "crypto.h"
 #include "file.h"
-
-#define MODE_NOT_SET 0
-#define MODE_ENCRYPT 1
-#define MODE_DECRYPT 2
-#define MODE_ENCRYPT_WITH_OUTPUT 3
-#define MODE_DECRYPT_WITH_OUTPUT 4
+#include "test.h"
 
 void print_help()
 {
@@ -14,32 +9,44 @@ void print_help()
 }
 int main(int argc, char *argv[])
 {
-    if(argc < 5){
-        print_help();
-        return 0;
-    }
-
     int mode;
     int pw_set = 0;
-
-    LPCSTR pw;
+    
+    PBYTE pw;
     LPCSTR path;
     LPCSTR output_path;
 
     FILE *in_file = NULL;
     FILE *out = NULL;
 
-    PBYTE hash;
-    DWORD hash_size;
-    BCRYPT_ALG_HANDLE sha256_alg;
+    DWORD iterations = PBKDF2_ITERATIONS;
 
     BCRYPT_ALG_HANDLE aes_algorithm;
 
-    AES_KEY *aes_key;
+    CIPHER *cypher_struct;
 
     LONGLONG plain_size;
     LONGLONG f_size;
 
+    // Search for iterations for PBKDF2
+    for(int i = 0;i < argc;i++)
+    {
+        if(strcmp(argv[i], "-i") == 0 && i != argc - 1){
+            iterations = strtol(argv[i + 1], NULL, 10);
+            break;
+        }
+    }
+
+    // Search for test mode
+    for(int i = 0;i < argc;i++)
+    {
+        if(strcmp(argv[i], "-t") == 0){
+            run_test(iterations);
+            return 0;
+        }
+    }
+
+    // Search for mode and path
     for(int i = 0;i < argc;i++)
     {
         if(strcmp(argv[i], "-e") == 0 && i != argc - 1){
@@ -56,6 +63,7 @@ int main(int argc, char *argv[])
 
     output_path = path;
 
+
     for(int i = 0;i < argc;i++)
     {
         if(strcmp(argv[i], "-p") == 0 && i != argc - 1){
@@ -65,6 +73,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Search for output file or same file
     for(int i = 0;i < argc;i++)
     {
         if(strcmp(argv[i], "-o") == 0 && i != argc - 1){
@@ -107,43 +116,35 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // Create Hash from password
-    sha256_alg = initialize_sha256_algorithm();
-    if(sha256_alg == NULL) goto Cleanup;
-    sha256_sum(sha256_alg, (PUCHAR) pw, strlen(pw), &hash, &hash_size);
-
-    // Initialize aes
-    aes_algorithm = initialize_aes_algorithm();
-    if(!aes_algorithm) goto Cleanup;
-    aes_key = get_aes_key_struct(hash, hash_size);
-    if(!aes_key)
-    {
-        fprintf(stderr, "Could not set aes key struct\n");
-        goto Cleanup;
+    if(allocate_algorithms() == FALSE){
+        return 0;
     }
 
-    // Free hash
-    HeapFree(GetProcessHeap(), 0, hash);
-    BCryptCloseAlgorithmProvider(sha256_alg, 0);
-
-    // Create symmetric key
-    create_symmetric_key_object(aes_algorithm, aes_key);
+    // Try to allocate algorithms
+    if((cypher_struct = get_cipher_struct()) == NULL) goto CLEANUP;
 
     // Get and strip iv from the end of the file
     if(mode == MODE_DECRYPT)
     {
-        if(get_and_strip_iv(path, aes_key) == 0)
+        if(get_iv_and_salt(path, cypher_struct, 1) == 0)
         {
-            goto Cleanup;
+            goto CLEANUP;
         }
     }
     else if(mode == MODE_DECRYPT_WITH_OUTPUT)
     {
-        if(get_and_not_strip_iv(path, aes_key) == 0)
+        if(get_iv_and_salt(path, cypher_struct, 0) == 0)
         {
-            goto Cleanup;
+            goto CLEANUP;
         }
     }
+
+    // Derive the key
+    if(!derive_key(pw, strlen(pw), iterations, cypher_struct)) goto CLEANUP;
+
+
+    // Create symmetric key
+    if(!create_symmetric_key_object(cypher_struct)) goto CLEANUP;
 
     f_size = get_file_size(path);
 
@@ -151,8 +152,24 @@ int main(int argc, char *argv[])
     if(in_file == NULL)
     {
         fprintf(stderr, "Could not open file\n");
-        goto Cleanup;
+        goto CLEANUP;
     }
+
+    // printf("PBKDF2 salt\n");
+    // for(int i = 0;i < cypher_struct->derivation_salt_size;i++){
+    //     printf("%.2x ", cypher_struct->derivation_salt[i]);
+    // }
+
+    // printf("\nIV\n");
+    // for(int i = 0;i < cypher_struct->iv_size;i++){
+    //     printf("%.2x ", cypher_struct->iv[i]);
+    // }
+    
+    // printf("\nKey\n");
+    // for(int i = 0;i < cypher_struct->key_size;i++){
+    //     printf("%.2x ", cypher_struct->key[i]);
+    // }
+    // printf("\n");
 
     if(mode == MODE_ENCRYPT)
     {
@@ -160,17 +177,17 @@ int main(int argc, char *argv[])
         if(in_file_writer == NULL)
         {
             fprintf(stderr, "Could not open the file for writing\n");
-            goto Cleanup;
+            goto CLEANUP;
         } 
 
-        plain_size = aes_encrypt(aes_key, in_file, in_file_writer, f_size);
+        plain_size = aes_encrypt(cypher_struct, in_file, in_file_writer, f_size);
         fclose(in_file);
         in_file = NULL;
         fclose(in_file_writer);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not aes encrypt the file\n");
-            goto Cleanup;
+            goto CLEANUP;
         }
         printf("File was encrypted\n");
     }else if(mode == MODE_DECRYPT)
@@ -179,16 +196,16 @@ int main(int argc, char *argv[])
         if(in_file_writer == NULL)
         {
             fprintf(stderr, "Could not open the file for writing\n");
-            goto Cleanup;
+            goto CLEANUP;
         } 
-        plain_size = aes_decrypt(aes_key, in_file, in_file_writer, f_size);
+        plain_size = aes_decrypt(cypher_struct, in_file, in_file_writer, f_size);
         fclose(in_file);
         in_file = NULL;
         fclose(in_file_writer);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
-            goto Cleanup;
+            goto CLEANUP;
         }
 
         // Strip remains of the encrypted file
@@ -202,41 +219,41 @@ int main(int argc, char *argv[])
         if(out == NULL)
         {
             fprintf(stderr, "Could not open output file: %s\n", output_path);
-            goto Cleanup;
+            goto CLEANUP;
         }
-        plain_size = aes_encrypt_output_file(aes_key, in_file, f_size, out);
+        plain_size = aes_encrypt_output_file(cypher_struct, in_file, f_size, out);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
-            goto Cleanup;
+            goto CLEANUP;
         }
         printf("File was encrypted\n");
     }
     else if(mode == MODE_DECRYPT_WITH_OUTPUT)
     {
-        // Exclude the iv at the of the file
-        f_size -= 16;
+        // Exclude the iv and the salt to preserve file integrity
+        f_size -= CRYPTO_IV_SIZE + PBKDF2_SALT_SIZE;
      
         out = fopen(output_path, "wb");
         if(out == NULL)
         {
             fprintf(stderr, "Could not open output file: %s\n", output_path);
-            goto Cleanup;
+            goto CLEANUP;
         }
-        plain_size = aes_decrypt_output_file(aes_key, in_file, f_size, out);
+        plain_size = aes_decrypt_output_file(cypher_struct, in_file, f_size, out);
         if(plain_size == 0)
         {
             fprintf(stderr, "Could not decrypt the file\n");
-            goto Cleanup;
+            goto CLEANUP;
         }
         printf("File was decrypted\n");
 
     }
 
     // Free everything
-    Cleanup:
-    if(aes_key) free_aes_key_struct(aes_key);
-    if(aes_algorithm) BCryptCloseAlgorithmProvider(aes_algorithm, 0);
+    CLEANUP:
+    if(cypher_struct) free_cipher_struct(cypher_struct);
+    delete_algorithms();
     if(in_file) fclose(in_file);
     if(out) fclose(out);
 

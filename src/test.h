@@ -1,5 +1,7 @@
-#ifndef RHINO_TEST_H
-#define RHINO_TEST_H
+#ifndef TEST_H
+#define TEST_H
+
+void run_test(unsigned long iterations);
 
 
 

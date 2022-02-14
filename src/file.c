@@ -8,7 +8,7 @@ LONGLONG get_file_size(LPCSTR f_name)
     CloseHandle(fp);
     return i.QuadPart;
 }
-BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
+BOOL get_iv_and_salt(LPCSTR f_name, CIPHER *a, int strip)
 {
     HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if(fp == INVALID_HANDLE_VALUE)
@@ -17,7 +17,7 @@ BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
         return 0;
     }
 
-    a->iv = HeapAlloc(GetProcessHeap(), 0, CRYPTO_IV_SIZE);
+    a->iv = HeapAlloc(GetProcessHeap(), 0, a->iv_size);
     if(a->iv == NULL)
     {
         printf("Could not allocate space for iv\n");
@@ -25,65 +25,45 @@ BOOL get_and_strip_iv(LPCSTR f_name, AES_KEY *a)
         return 0;
     }
 
-    SetFilePointer(fp, - CRYPTO_IV_SIZE, 0, FILE_END);
-
-    // Read iv from end of the file
-    DWORD bytes_read;
-    if(!ReadFile(fp, a->iv, CRYPTO_IV_SIZE, &bytes_read, NULL) || bytes_read != CRYPTO_IV_SIZE)
-    {
-        printf("Could not read iv from file: %s\nbytes read: %lu\n", f_name, bytes_read);
-        CloseHandle(fp);
-        return 0;
-    }
-
-    // Remove iv from end of the file
-    SetFilePointer(fp, - CRYPTO_IV_SIZE, 0, FILE_END);
-    SetEndOfFile(fp);
-
-    CloseHandle(fp);
-    return 1;
-}
-BOOL get_and_not_strip_iv(LPCSTR f_name, AES_KEY *a)
-{
-    LARGE_INTEGER i;
-
-    HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if(fp == INVALID_HANDLE_VALUE)
-    {
-        printf("Could not open file: %lu\n", GetLastError());
-        return 0;
-    }
-
-    a->iv = HeapAlloc(GetProcessHeap(), 0, CRYPTO_IV_SIZE);
-    if(a->iv == NULL)
+    a->derivation_salt = HeapAlloc(GetProcessHeap(), 0, a->derivation_salt_size);
+    if(a->derivation_salt == NULL)
     {
         printf("Could not allocate space for iv\n");
         CloseHandle(fp);
         return 0;
     }
 
-    GetFileSizeEx(fp, &i);
-    i.QuadPart -= 16;
-
-    if(SetFilePointer(fp, i.LowPart, &i.HighPart, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    DWORD bytes_read;
+    
+    // Read key salt from end
+    SetFilePointer(fp, - a->derivation_salt_size, 0, FILE_END);
+    if(!ReadFile(fp, a->derivation_salt, a->derivation_salt_size, &bytes_read, NULL) || bytes_read != a->derivation_salt_size)
     {
-        fprintf(stderr, "Could not set file pointer\n");
+        printf("Could not read derivation salt from file: %s\nbytes read: %lu\n", f_name, bytes_read);
         CloseHandle(fp);
         return 0;
-    }
+    }   
 
     // Read iv from end of the file
-    DWORD bytes_read;
-    if(!ReadFile(fp, a->iv, CRYPTO_IV_SIZE, &bytes_read, NULL) || bytes_read != CRYPTO_IV_SIZE)
+    SetFilePointer(fp, - (a->iv_size +  a->derivation_salt_size), 0, FILE_END);
+
+    if(!ReadFile(fp, a->iv, a->iv_size, &bytes_read, NULL) || bytes_read != a->iv_size)
     {
         printf("Could not read iv from file: %s\nbytes read: %lu\n", f_name, bytes_read);
         CloseHandle(fp);
         return 0;
     }
+    
+    SetFilePointer(fp, - a->iv_size, 0, FILE_CURRENT);
+
+    if(strip){
+        SetEndOfFile(fp);
+    }
 
     CloseHandle(fp);
-    return 1;
+    return TRUE;
 }
+
 BOOL strip_file(LPCSTR f_name, int origin, long offset)
 {
     HANDLE fp = CreateFileA(f_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
