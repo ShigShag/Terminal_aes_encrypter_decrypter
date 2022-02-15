@@ -490,6 +490,50 @@ BOOL sha256_sum(BCRYPT_ALG_HANDLE hAlg, PUCHAR plain, DWORD plain_size, PBYTE *c
 
     return 1;
 }
+PBYTE getpass(const char *prompt, int *pw_size)
+{
+    const char BACKSPACE = 8;
+    const char RETURN = 13;
+
+    int index = 0;
+
+    char *password = (char *) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, MAX_PASSWORD_LENGTH);
+    unsigned char input = 0;
+
+    printf("%s", prompt);
+
+    DWORD con_mode;
+    DWORD dwRead;
+
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+
+    GetConsoleMode(hIn, &con_mode);
+    SetConsoleMode(hIn, con_mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT));
+
+    while(ReadConsoleA(hIn, &input, 1, &dwRead, NULL) && input != RETURN)
+    {
+        if(input == BACKSPACE)
+        {
+            if(index != 0)
+            {
+                printf("\b \b");
+                password[index - 1] = 0;
+                index -= 2;
+            }
+    }
+        else
+        {
+            password[index] = input;
+            printf("*");
+        }
+        index++;
+    }
+    SetConsoleMode(hIn, con_mode);
+    printf("\n");
+    
+    *pw_size = index;
+    return password;
+}
 BOOL derive_key(PBYTE pw, DWORD pw_size, DWORD iterations, CIPHER *key_struct)
 {
     if(pw == NULL || pw_size == 0 || key_struct == NULL) return FALSE;

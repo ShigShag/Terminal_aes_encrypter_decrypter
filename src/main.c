@@ -10,9 +10,10 @@ void print_help()
 int main(int argc, char *argv[])
 {
     int mode;
-    int pw_set = 0;
-    
+
     PBYTE pw;
+    int pw_size;
+
     LPCSTR path;
     LPCSTR output_path;
 
@@ -63,16 +64,6 @@ int main(int argc, char *argv[])
 
     output_path = path;
 
-
-    for(int i = 0;i < argc;i++)
-    {
-        if(strcmp(argv[i], "-p") == 0 && i != argc - 1){
-            pw = argv[i + 1];
-            pw_set = 1;
-            break;
-        }
-    }
-
     // Search for output file or same file
     for(int i = 0;i < argc;i++)
     {
@@ -103,12 +94,6 @@ int main(int argc, char *argv[])
         else if(mode == MODE_ENCRYPT_WITH_OUTPUT) mode = MODE_ENCRYPT;
     }
 
-    if(!pw_set)
-    {
-        printf("Password was not set\n");
-        print_help();
-        return 0;
-    }
     if(mode == MODE_NOT_SET)
     {
         printf("Mode was not set\n");
@@ -139,9 +124,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Derive the key
-    if(!derive_key(pw, strlen(pw), iterations, cypher_struct)) goto CLEANUP;
+    // Get password
+    pw = getpass("Enter password\n", &pw_size);
 
+    // Derive the key
+    if(!derive_key(pw, pw_size, iterations, cypher_struct)) goto CLEANUP;
+
+    // Delete password
+    memset(pw, 0, MAX_PASSWORD_LENGTH);
+    HeapFree(GetProcessHeap(), 0, pw);
+    pw = NULL;
 
     // Create symmetric key
     if(!create_symmetric_key_object(cypher_struct)) goto CLEANUP;
@@ -256,6 +248,7 @@ int main(int argc, char *argv[])
     delete_algorithms();
     if(in_file) fclose(in_file);
     if(out) fclose(out);
+    if(pw) HeapFree(GetProcessHeap(), 0, pw);
 
     return 0;
 }

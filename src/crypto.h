@@ -11,6 +11,9 @@
 #define MODE_ENCRYPT_WITH_OUTPUT 3
 #define MODE_DECRYPT_WITH_OUTPUT 4
 
+// Maximal password length
+#define MAX_PASSWORD_LENGTH 200
+
 // IV size for aes cbc encryption
 #define CRYPTO_IV_SIZE 16
 
@@ -85,6 +88,9 @@ BOOL aes_decrypt_output_file(CIPHER *a, FILE *in, LONGLONG in_size, FILE *out);
 PBYTE get_random_bytes(DWORD count);
 
 /* ---------------------- KEY ---------------------- */
+
+/* Password input */
+PBYTE getpass(const char *prompt, int *pw_size);
 
 /* Key derivation */
 BOOL derive_key(PBYTE pw, DWORD pw_size, DWORD iterations, CIPHER *key_struct);
